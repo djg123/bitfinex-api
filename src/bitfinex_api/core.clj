@@ -1,7 +1,8 @@
 (ns bitfinex-api.core
   (:require [clj-http.client :as client]
             [clojure.string :as s]
-            [clojure.data.json :as json]))
+            [clojure.data.json :as json]
+            [clojure.algo.generic.functor :refer [ fmap]]))
 
 (declare build-parameters get-request convert-to-floats
          make-index-list)
@@ -45,7 +46,8 @@
   ['btcusd', 'ltcusd', 'ltcbtc']
   "
   []
-  (get-request (url-for path-symbols)))
+  (json/read-json
+   (:body (get-request (url-for path-symbols)))))
 
 (defn ticker "GET /ticker/:symbol
   curl https://api.bitfinex.com/v1/ticker/btcusd
@@ -61,10 +63,9 @@
    ((comp json/read-json :body)
     (get-request (url-for path-ticker ticker-symbol)))))
 
-(defn today 
-  "GET /today/:symbol
-        curl \"https://api.bitfinex.com/v1/today/btcusd\"
-        {\" low \":\"550.09\",\"high\":\"572.2398\",\"volume\":\"7305.33119836\"}"
+(defn today "GET /today/:symbol
+        curl \\\"https://api.bitfinex.com/v1/today/btcusd\\\"
+        {\\\" low \\\":\\\"550.09\\\",\\\"high\\\":\\\"572.2398\\\",\\\"volume\\\":\\\"7305.33119836\\\"}"
   [ ticker-symbol]
   (convert-to-floats
    (get-request (url-for path-today ticker-symbol))))
