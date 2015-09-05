@@ -2,10 +2,14 @@
   (:require [clj-http.client :as client]
             [clojure.string :as s]
             [clojure.data.json :as json]
+            [clojure.algo.generic.functor :refer [ fmap]]
+            [clj-http.client :as client]
+            [clojure.string :as s]
+            [clojure.data.json :as json]
             [clojure.algo.generic.functor :refer [ fmap]]))
 
 (declare build-parameters get-request convert-to-floats
-         make-index-list)
+         make-index-list parseDouble)
 
 (def protocol "https")
 (def host  "api.bitfinex.com")
@@ -21,8 +25,9 @@
 
 
 (defn server []
-  "Creates server url from config information."
+  "creates server url from config information."
   (format "%s://%s/%s" protocol host version))
+
 
 
 (defn url-for 
@@ -46,8 +51,7 @@
   ['btcusd', 'ltcusd', 'ltcbtc']
   "
   []
-  (json/read-json
-   (:body (get-request (url-for path-symbols)))))
+  (get-request (url-for path-symbols)))
 
 (defn ticker "GET /ticker/:symbol
   curl https://api.bitfinex.com/v1/ticker/btcusd
@@ -58,16 +62,13 @@
   'last_price': u'562.25',
   'mid': u'562.62495'}"
   [ticker-symbol]
-  (convert-to-floats
-
-   ((comp json/read-json :body)
-    (get-request (url-for path-ticker ticker-symbol)))))
+  (get-request (url-for path-ticker ticker-symbol)))
 
 (defn today "GET /today/:symbol
         curl \\\"https://api.bitfinex.com/v1/today/btcusd\\\"
         {\\\" low \\\":\\\"550.09\\\",\\\"high\\\":\\\"572.2398\\\",\\\"volume\\\":\\\"7305.33119836\\\"}"
   [ ticker-symbol]
-  (convert-to-floats
+  (fmap parseDouble
    (get-request (url-for path-today ticker-symbol))))
 
 (defn stats "curl https://api.bitfinex.com/v1/stats/btcusd
@@ -77,24 +78,22 @@
             {\"period\":30,\"volume\":\"464505.07753251\"}
         ]"
   [ ticker-symbol]
-  (convert-to-floats
-   (let [period (get-request
-                 (url-for  path-stats  ticker-symbol))]
-     (reduce (fn [a [k v]]
-               (conj a
-                     (case k
-                       "period" [k (int v)]
-                       "volume" [k (float v)])))
-             {} period))))
+  (fmap #(update % :volume parseDouble)
+   (get-request
+    (url-for  path-stats  ticker-symbol))))
 
 (defn lendbook  "curl \"https://api.bitfinex.com/v1/lendbook/btc\"
         {\"bids\":[{\"rate\":\"5.475\",\"amount\":\"15.03894663\",\"period\":30,\"timestamp\":\"1395112149.0\",\"frr\":\"No\"},{\"rate\":\"2.409\",\"amount\":\"14.5121868\",\"period\":7,\"timestamp\":\"1395497599.0\",\"frr\":\"No\"}],\"asks\":[{\"rate\":\"6.351\",\"amount\":\"15.5180735\",\"period\":5,\"timestamp\":\"1395549996.0\",\"frr\":\"No\"},{\"rate\":\"6.3588\",\"amount\":\"626.94808249\",\"period\":30,\"timestamp\":\"1395400654.0\",\"frr\":\"Yes\"}]}
         Optional parameters
         limit_bids (int): Optional. Limit the number of bids (loan demands) returned. May be 0 in which case the array of bids is empty. Default is 50.
         limit_asks (int): Optional. Limit the number of asks (loan offers) returned. May be 0 in which case the array of asks is empty. Default is 50."
-  ([ currency params]
+  ([currency]
+   (lendbook currency {}))
+  ([currency params]
    (let [data (get-request (url-for path-lendbook
-                                    currency params))]
+                                    currency (if (empty? params)
+                                               nil
+                                               params)))]
      (for [lend-type data
            lend (:lend-type data)]
        (reduce (fn [a [k v]]
@@ -122,10 +121,13 @@
    (order-book  ticker-symbol nil))
   ([ ticker-symbol params]
    (let [data (get-request
-               (url-for  path-orderbook ticker-symbol params))]
-     (reduce (fn [a indeces]
-               (update-in a indeces float)) data
-               (make-index-list data)))))
+               (url-for  path-orderbook ticker-symbol params))
+         update-fn (fn [lst]
+                     (map #(fmap parseDouble %)
+                           lst))]
+     (-> data
+         (update :bids update-fn)
+         (update :asks update-fn)))))
 ;         (update-in data [type index sub-key] float)
 
 (defn make-index-list
@@ -146,9 +148,12 @@
           (map (fn [[k v]] (format "%s=%s" k v))
                parameters)))
 
-(defn get-request ([url timeout]
-                   (client/get url {:accept :json
-                                    :conn-timeout timeout}))
+(defn get-request
+  ([url timeout]
+   (json/read-json
+    (:body
+     (client/get url {:accept :json
+                      :conn-timeout timeout}))))
   ([url ]
    (get-request url default-timeout)))
 
@@ -156,3 +161,8 @@
   "I don't do a whole lot."
   [x]
   (println x "Hello, World!"))
+
+(defn parseDouble [x]
+  "Wrapper for Double/parseDouble"
+  (Double/parseDouble x))
+

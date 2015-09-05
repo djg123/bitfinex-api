@@ -5,7 +5,7 @@
 (def cfg {})
 (deftest should-have-server
   (testing "Correctly interprets server URL from config."
-    (is (= (server cfg)
+    (is (= (server)
          "https://api.bitfinex.com/v1"))))
 
 (deftest make-correct-indeces
